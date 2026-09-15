@@ -19,14 +19,20 @@ st.set_page_config(
 st.title("📚 Document RAG Assistant")
 st.write("Ask questions about your Machine Learning Lab Manual.")
 
+uploaded_files = st.file_uploader(
+    "Upload a document",
+    type=["pdf", "docx"]
+    accept_multiple_files=True
+)
+
 
 @st.cache_resource
-def load_rag_system():
-    """Load and prepare the document for RAG."""
+def load_rag_system(document_path):
+    """Load and prepare an uploaded document for RAG."""
 
-    document_path = "documents/ml_lab_manual.docx"
+    from rag import extract_text_from_document
 
-    text = extract_text_from_docx(document_path)
+    text = extract_text_from_document(document_path)
 
     chunks = split_text(text)
 
@@ -37,12 +43,21 @@ def load_rag_system():
     return index, chunks
 
 
-# Load RAG system
-with st.spinner("Loading document..."):
-    index, chunks = load_rag_system()
+# Process uploaded document
+if uploaded_file:
 
+    with open(uploaded_file.name, "wb") as f:
+        f.write(uploaded_file.getbuffer())
 
-st.success("Document loaded successfully! ✅")
+    with st.spinner("Processing document..."):
+        index, chunks = load_rag_system(uploaded_file.name)
+
+    st.success("Document processed successfully! ✅")
+
+else:
+
+    st.info("Please upload a PDF or DOCX document to begin.")
+
 
 
 # Question input
@@ -51,7 +66,7 @@ question = st.text_input(
 )
 
 
-if question:
+if uploaded_file and question:
 
     with st.spinner("Finding the answer..."):
 

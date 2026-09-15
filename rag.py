@@ -36,26 +36,66 @@ def extract_text_from_docx(docx_path):
 
     return text
 
+
+def extract_text_from_document(file_path):
+    """Extract text from a PDF or DOCX document."""
+
+    if file_path.lower().endswith(".pdf"):
+        return extract_text_from_pdf(file_path)
+
+    elif file_path.lower().endswith(".docx"):
+        return extract_text_from_docx(file_path)
+
+    else:
+        raise ValueError("Unsupported file type. Please upload a PDF or DOCX file.")
+
 def split_text(text, chunk_size=500, overlap=50):
-    """Split text into overlapping chunks."""
+    """Split text into chunks while trying to preserve complete sentences."""
 
     chunks = []
 
-    start = 0
+    paragraphs = text.split("\n")
 
-    while start < len(text):
+    current_chunk = ""
 
-        end = start + chunk_size
+    for paragraph in paragraphs:
 
-        chunk = text[start:end].strip()
+        paragraph = paragraph.strip()
 
-        if chunk:
-            chunks.append(chunk)
+        if not paragraph:
+            continue
 
-        start += chunk_size - overlap
+        # If adding the paragraph keeps the chunk within the limit
+        if len(current_chunk) + len(paragraph) <= chunk_size:
+
+            if current_chunk:
+                current_chunk += "\n" + paragraph
+            else:
+                current_chunk = paragraph
+
+        else:
+
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+
+            # Keep some context from the previous chunk
+            previous_words = current_chunk.split()
+
+            overlap_text = " ".join(
+                previous_words[-overlap:]
+            )
+
+            current_chunk = (
+                overlap_text + "\n" + paragraph
+                if overlap_text
+                else paragraph
+            )
+
+    # Add the final chunk
+    if current_chunk:
+        chunks.append(current_chunk.strip())
 
     return chunks
-
 
 def create_embeddings(chunks):
     """Convert text chunks into numerical vectors."""
@@ -87,13 +127,14 @@ def create_faiss_index(embeddings):
 
 
 def search_documents(query, index, chunks, top_k=3):
-    """Find the most relevant chunks for a question."""
+    """Find relevant chunks using dynamic similarity filtering."""
 
     query_embedding = embedding_model.encode(
         [query],
         convert_to_numpy=True
     )
 
+    # Normalize query embedding for cosine similarity
     faiss.normalize_L2(query_embedding)
 
     distances, indices = index.search(
@@ -101,11 +142,25 @@ def search_documents(query, index, chunks, top_k=3):
         top_k
     )
 
+    print("\nSimilarity scores:")
+
+    for distance in distances[0]:
+        print(distance)
+
+    # Best similarity score
+    best_score = distances[0][0]
+
     results = []
 
-    for index_position in indices[0]:
+    for score, index_position in zip(
+        distances[0],
+        indices[0]
+    ):
 
-        if index_position != -1:
+        # Keep chunks that are sufficiently close
+        # to the best matching chunk
+        if index_position != -1 and score >= best_score * 0.90:
+
             results.append(
                 chunks[index_position]
             )
